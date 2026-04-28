@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offer Wall Dashboard · TesterUP</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1e293b; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Header ── */
+.header { background: #1e293b; color: white; padding: 10px 24px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.header-logo { font-size: 20px; }
+.header h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+.header .sub { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+
+/* ── Controls bar ── */
+.controls-bar { background: white; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+.ctrl-group { display: flex; align-items: center; gap: 6px; }
+.ctrl-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.6px; white-space: nowrap; }
+select { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; background: #f8fafc; color: #1e293b; cursor: pointer; min-width: 120px; }
+select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+.divider { width: 1px; height: 28px; background: #e2e8f0; margin: 0 6px; flex-shrink: 0; }
+
+/* Toggle */
+.toggle-wrap { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+.toggle { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.slider { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; border-radius: 22px; transition: .25s; }
+.slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .25s; }
+.toggle input:checked + .slider { background: #3b82f6; }
+.toggle input:checked + .slider:before { transform: translateX(18px); }
+.toggle-label { font-size: 13px; font-weight: 600; color: #374151; white-space: nowrap; }
+.compare-tag { background: #eff6ff; color: #3b82f6; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px; letter-spacing: 0.3px; }
+
+/* ── Compare offers bar ── */
+.compare-offers-bar { background: #fafbff; border-bottom: 1px solid #e2e8f0; padding: 8px 24px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
+.cob-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.6px; white-space: nowrap; flex-shrink: 0; }
+.cob-input-wrap { flex: 1; min-width: 200px; max-width: 600px; position: relative; }
+.cob-chips-input { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 8px; background: white; min-height: 36px; cursor: text; transition: border-color .15s; }
+.cob-chips-input:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.12); }
+.cob-chips-input.has-items { padding: 4px 8px; }
+.offer-chip { display: flex; align-items: center; gap: 4px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 20px; padding: 2px 6px 2px 4px; font-size: 12px; color: #1d4ed8; max-width: 200px; }
+.chip-icon { width: 18px; height: 18px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: #dbeafe; }
+.chip-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.chip-remove { background: none; border: none; color: #93c5fd; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 1px; flex-shrink: 0; }
+.chip-remove:hover { color: #1d4ed8; }
+.cob-search { border: none; outline: none; font-size: 13px; color: #1e293b; background: transparent; min-width: 140px; flex: 1; padding: 2px 0; }
+.cob-search::placeholder { color: #94a3b8; }
+.cob-hint { font-size: 12px; color: #94a3b8; flex-shrink: 0; }
+.btn-compare-now { background: #3b82f6; color: white; border: none; padding: 7px 18px; border-radius: 7px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: background .15s; }
+.btn-compare-now:hover:not(:disabled) { background: #2563eb; }
+.btn-compare-now:disabled { background: #cbd5e1; cursor: not-allowed; }
+.btn-clear-all { background: none; border: 1px solid #e2e8f0; color: #64748b; padding: 6px 12px; border-radius: 7px; font-size: 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+.btn-clear-all:hover { border-color: #94a3b8; color: #374151; }
+
+/* ── Offer search dropdown ── */
+.offer-dropdown { position: fixed; background: white; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.12); z-index: 2000; max-height: 320px; overflow-y: auto; display: none; }
+.offer-dropdown.open { display: block; }
+.dd-section { padding: 6px 12px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; border-top: 1px solid #f1f5f9; }
+.dd-section:first-child { border-top: none; }
+.offer-opt { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; transition: background .1s; }
+.offer-opt:hover, .offer-opt.focused { background: #eff6ff; }
+.offer-opt.already-selected { opacity: 0.4; pointer-events: none; }
+.opt-icon { width: 32px; height: 32px; border-radius: 7px; object-fit: cover; flex-shrink: 0; background: #f1f5f9; }
+.opt-info { flex: 1; min-width: 0; }
+.opt-title { font-size: 13px; font-weight: 600; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opt-meta { font-size: 11px; color: #64748b; margin-top: 1px; }
+.opt-check { color: #3b82f6; font-size: 14px; flex-shrink: 0; }
+.dd-empty { padding: 16px 12px; font-size: 13px; color: #94a3b8; text-align: center; }
+
+/* ── Panels ── */
+.panels { display: flex; flex: 1; overflow: hidden; }
+.panel { flex: 1; overflow-y: auto; padding: 20px; }
+.panel.left-border { border-right: 3px solid #e2e8f0; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 18px; }
+.stat { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+.stat-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; }
+.stat-val { font-size: 20px; font-weight: 800; color: #1e293b; margin-top: 2px; }
+.stat-val.green { color: #16a34a; }
+
+/* Sort bar */
+.sort-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.sort-bar label { font-size: 12px; color: #64748b; }
+.sort-bar select { min-width: 0; padding: 4px 8px; font-size: 12px; }
+
+/* Rank badge on cards */
+.card-rank { position: absolute; top: 6px; left: 6px; background: #1e293b; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 6px; line-height: 1.4; letter-spacing: 0.3px; }
+.card-rank.rank-top3 { background: #f59e0b; color: #fff; }
+.card-img { position: relative; }
+
+/* Offer grid */
+.offers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 10px; }
+.card { background: white; border: 1.5px solid #e2e8f0; border-radius: 10px; overflow: hidden; transition: box-shadow .2s, transform .2s, border-color .15s; cursor: pointer; }
+.card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.1); transform: translateY(-2px); }
+.card-img { width: 100%; height: 90px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.card-img img { width: 100%; height: 100%; object-fit: cover; }
+.card-img .ph { font-size: 30px; }
+.card-body { padding: 10px 12px; }
+.card-title { font-size: 12px; font-weight: 600; color: #1e293b; line-height: 1.35; margin-bottom: 7px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px; }
+.card-payout { font-size: 17px; font-weight: 800; color: #16a34a; }
+.card-payout .cur { font-size: 11px; font-weight: 500; color: #64748b; margin-left: 2px; }
+.badges { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px; }
+.badge { font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+.b-cat  { background: #f1f5f9; color: #475569; }
+.b-plat { background: #e0f2fe; color: #0369a1; }
+.b-new  { background: #fef9c3; color: #854d0e; }
+.b-prem { background: #faf5ff; color: #7c3aed; }
+
+/* Empty / Loading */
+.empty { text-align: center; padding: 60px 20px; color: #94a3b8; }
+.empty .icon { font-size: 44px; margin-bottom: 12px; }
+.empty p { font-size: 14px; }
+.loading { text-align: center; padding: 50px; color: #94a3b8; font-size: 14px; }
+
+/* ── Offer comparison full-screen overlay ── */
+.cmp-overlay { display: none; position: fixed; inset: 0; background: #f0f2f5; z-index: 900; flex-direction: column; overflow: hidden; }
+.cmp-overlay.open { display: flex; }
+.cmp-header { background: #1e293b; color: white; padding: 12px 24px; display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.cmp-back-btn { background: rgba(255,255,255,0.1); border: none; color: white; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.cmp-back-btn:hover { background: rgba(255,255,255,0.2); }
+.cmp-title { font-size: 15px; font-weight: 700; }
+.cmp-subtitle { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+.cmp-badge { margin-left: auto; font-size: 11px; color: #94a3b8; background: #0f172a; padding: 4px 10px; border-radius: 6px; }
+.cmp-columns-wrap { flex: 1; overflow-x: auto; overflow-y: hidden; display: flex; padding: 16px; gap: 12px; }
+.cmp-col { flex: 0 0 290px; min-width: 250px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; }
+.cmp-col-head { padding: 14px 14px 12px; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
+.cmp-col-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.cmp-col-img { width: 44px; height: 44px; border-radius: 10px; overflow: hidden; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.cmp-col-img img { width: 100%; height: 100%; object-fit: cover; }
+.cmp-col-title { font-size: 13px; font-weight: 700; color: #1e293b; line-height: 1.3; flex: 1; }
+.cmp-remove { background: none; border: none; font-size: 18px; color: #cbd5e1; cursor: pointer; line-height: 1; padding: 0; flex-shrink: 0; }
+.cmp-remove:hover { color: #ef4444; }
+.cmp-col-payout { font-size: 22px; font-weight: 800; color: #16a34a; }
+.cmp-col-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.cmp-col-body { flex: 1; overflow-y: auto; }
+.cmp-loading { text-align: center; padding: 32px; color: #94a3b8; font-size: 13px; }
+.cmp-empty-col { text-align: center; padding: 32px 16px; color: #94a3b8; font-size: 12px; }
+.cmp-events-table { width: 100%; border-collapse: collapse; }
+.cmp-events-table td { padding: 7px 14px; border-bottom: 1px solid #f1f5f9; font-size: 12px; vertical-align: middle; }
+.cmp-events-table tr:last-child td { border-bottom: none; }
+.cmp-events-table tr:hover td { background: #f8fafc; }
+.cmp-ev-name { color: #374151; font-weight: 500; line-height: 1.3; }
+.cmp-ev-bar-cell { width: 56px; }
+.cmp-ev-bar-wrap { background: #f1f5f9; border-radius: 3px; height: 5px; }
+.cmp-ev-bar { height: 5px; background: #22c55e; border-radius: 3px; }
+.cmp-ev-payout { text-align: right; font-weight: 700; color: #16a34a; white-space: nowrap; font-size: 12px; }
+.cmp-ev-missing { text-align: right; color: #cbd5e1; font-size: 14px; }
+.cmp-col-footer { padding: 8px 14px 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #94a3b8; border-top: 1px solid #f1f5f9; flex-shrink: 0; }
+
+/* ── Single offer detail modal ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 1000; align-items: center; justify-content: center; padding: 24px; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: white; border-radius: 14px; width: 100%; max-width: 740px; max-height: 88vh; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 25px 60px rgba(0,0,0,0.25); animation: slideUp .2s ease; }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-head { display: flex; align-items: flex-start; gap: 16px; padding: 20px 20px 16px; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
+.modal-img { width: 72px; height: 72px; border-radius: 14px; flex-shrink: 0; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 28px; overflow: hidden; }
+.modal-img img { width: 100%; height: 100%; object-fit: cover; }
+.modal-info { flex: 1; }
+.modal-title { font-size: 18px; font-weight: 700; color: #1e293b; line-height: 1.3; }
+.modal-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.modal-payout { font-size: 22px; font-weight: 800; color: #16a34a; }
+.modal-close { background: none; border: none; font-size: 22px; color: #94a3b8; cursor: pointer; padding: 4px 8px; border-radius: 6px; margin-left: auto; flex-shrink: 0; line-height: 1; }
+.modal-close:hover { background: #f1f5f9; color: #1e293b; }
+.modal-body { overflow-y: auto; padding: 0 20px 20px; flex: 1; }
+.modal-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; margin: 16px 0 10px; }
+.events-table { width: 100%; border-collapse: collapse; }
+.events-table th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; text-align: left; padding: 6px 10px; border-bottom: 1px solid #e2e8f0; }
+.events-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
+.events-table tr:last-child td { border-bottom: none; }
+.events-table tr:hover td { background: #f8fafc; }
+.event-name { font-weight: 500; color: #1e293b; }
+.event-payout { text-align: right; font-weight: 700; color: #16a34a; white-space: nowrap; }
+.event-bar-cell { width: 120px; padding-right: 14px; }
+.event-bar-wrap { background: #f1f5f9; border-radius: 4px; height: 6px; overflow: hidden; }
+.event-bar { height: 6px; background: #22c55e; border-radius: 4px; }
+.event-badges { display: flex; gap: 3px; }
+.modal-loading { text-align: center; padding: 40px; color: #94a3b8; font-size: 14px; }
+.modal-empty { text-align: center; padding: 32px; color: #94a3b8; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">📊</div>
+  <div>
+    <h1>Offer Wall Dashboard</h1>
+    <div class="sub">Campaign Manager · TesterUP</div>
+  </div>
+</div>
+
+<!-- ── Main filters ── -->
+<div class="controls-bar">
+  <div class="ctrl-group">
+    <span class="ctrl-label">Publisher</span>
+    <select id="pub1" onchange="onPub1Change()"><option value="">Select…</option></select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Platform</span>
+    <select id="plat1" onchange="onPlat1Change()"><option value="">Select…</option></select>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Date</span>
+    <select id="date1" onchange="loadPanel(1)"><option value="">Select…</option></select>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="toggle-wrap">
+    <label class="toggle">
+      <input type="checkbox" id="compareToggle" onchange="toggleCompare()">
+      <span class="slider"></span>
+    </label>
+    <span class="toggle-label">Compare Mode</span>
+  </div>
+
+  <div class="divider" id="div2" style="display:none"></div>
+
+  <div id="ctrlB" style="display:none; align-items:center; gap:10px;">
+    <span class="compare-tag">B</span>
+    <div class="ctrl-group">
+      <span class="ctrl-label">Publisher</span>
+      <select id="pub2" onchange="onPub2Change()"><option value="">Select…</option></select>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">Platform</span>
+      <select id="plat2" onchange="onPlat2Change()"><option value="">Select…</option></select>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">Date</span>
+      <select id="date2" onchange="loadPanel(2)"><option value="">Select…</option></select>
+    </div>
+  </div>
+</div>
+
+<!-- ── Compare specific offers bar ── -->
+<div class="compare-offers-bar">
+  <span class="cob-label">Compare Offers</span>
+
+  <div class="cob-input-wrap">
+    <div class="cob-chips-input" id="chipsInput" onclick="focusSearch()">
+      <input type="text" class="cob-search" id="offerSearch"
+             placeholder="Search by game name…"
+             oninput="onSearchInput()"
+             onfocus="openDropdown()"
+             onblur="onSearchBlur()"
+             onkeydown="onSearchKey(event)">
+    </div>
+
+    <!-- Dropdown — positioned via JS -->
+    <div class="offer-dropdown" id="offerDropdown"></div>
+  </div>
+
+  <span class="cob-hint" id="cobHint">Load offers above, then search to compare</span>
+  <button class="btn-clear-all" id="btnClearAll" onclick="clearAllChips()" style="display:none">Clear all</button>
+  <button class="btn-compare-now" id="btnCompare" onclick="openCompareView()" disabled>Compare</button>
+</div>
+
+<!-- ── Comparison full-screen overlay ── -->
+<div class="cmp-overlay" id="cmpOverlay">
+  <div class="cmp-header">
+    <button class="cmp-back-btn" onclick="closeCmpOverlay()">← Back</button>
+    <div>
+      <div class="cmp-title" id="cmpTitle">Offer Comparison</div>
+      <div class="cmp-subtitle" id="cmpSubtitle"></div>
+    </div>
+    <div class="cmp-badge" id="cmpBadge"></div>
+  </div>
+  <div class="cmp-columns-wrap" id="cmpColumns"></div>
+</div>
+
+<!-- ── Single offer event detail modal ── -->
+<div class="modal-overlay" id="modal" onclick="modalBgClick(event)">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-img" id="modal-img"></div>
+      <div class="modal-info">
+        <div class="modal-title" id="modal-title"></div>
+        <div class="modal-meta" id="modal-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="modal-loading">⏳ Loading event breakdown…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Offer panels ── -->
+<div class="panels" id="panels">
+  <div class="panel" id="panel1">
+    <div class="empty"><div class="icon">📂</div><p>Select a publisher and date to view offers</p></div>
+  </div>
+  <div class="panel" id="panel2" style="display:none">
+    <div class="empty"><div class="icon">📂</div><p>Select a publisher and date to compare</p></div>
+  </div>
+</div>
+
+<script>
+let allFiles   = [];
+const offerMap = {};           // offer_id → offer object
+const panelOffers = {1:[], 2:[]};  // offers per panel (for panel-aware search)
+const selectedForCompare = new Map(); // key → offer  (compare bar selection)
+let ddFocusIdx = -1;           // keyboard nav index in dropdown
+
+/* ════════════════════════════════════════════════════════
+   INIT & FILE LIST
+   ════════════════════════════════════════════════════════ */
+async function init() {
+  const resp = await fetch('/api/files');
+  allFiles = await resp.json();
+
+  // ── Panel 1 defaults: TesterUP · Android · yesterday ──
+  fillPublishers(1);
+  const pub1 = document.getElementById('pub1');
+  if ([...pub1.options].some(o => o.value === 'testerup')) pub1.value = 'testerup';
+
+  fillPlatforms(1);
+  const plat1 = document.getElementById('plat1');
+  if ([...plat1.options].some(o => o.value === 'Android')) plat1.value = 'Android';
+
+  fillDates(1);
+  const date1 = document.getElementById('date1');
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+  const ys = yesterday.toISOString().slice(0,10).replace(/-/g,''); // YYYYMMDD
+  const yOpt = [...date1.options].find(o => o.value.startsWith(ys));
+  if (yOpt) { date1.value = yOpt.value; loadPanel(1); }
+  else if (date1.options.length > 1) { date1.selectedIndex = 1; loadPanel(1); } // fallback: most recent
+
+  fillPublishers(2);
+}
+
+/* ── Helpers ── */
+function unique(arr) { return [...new Set(arr)].sort(); }
+function cap(s)      { return s.charAt(0).toUpperCase() + s.slice(1); }
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function publishers() { return unique(allFiles.map(f => f.publisher)); }
+function platforms(pub) {
+  return unique(allFiles.filter(f => !pub || f.publisher === pub).map(f => f.platform));
+}
+function dates(pub, plat) {
+  const filtered = allFiles.filter(f =>
+    (!pub  || f.publisher === pub) &&
+    (!plat || f.platform  === plat)
+  );
+  const map = {};
+  filtered.forEach(f => {
+    if (!map[f.date] || f.timestamp > map[f.date].timestamp) map[f.date] = f;
+  });
+  return Object.values(map).sort((a,b) => b.date.localeCompare(a.date));
+}
+function fmtDate(d) {
+  return new Date(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`)
+    .toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'});
+}
+function setSelect(id, options, valKey, lblKey) {
+  const el = document.getElementById(id), prev = el.value;
+  el.innerHTML = '<option value="">Select…</option>';
+  options.forEach(o => {
+    const opt = document.createElement('option');
+    opt.value = typeof o === 'string' ? o : o[valKey];
+    opt.textContent = typeof o === 'string' ? cap(o) : o[lblKey];
+    if (opt.value === prev) opt.selected = true;
+    el.appendChild(opt);
+  });
+}
+
+/* ── Populate dropdowns ── */
+function fillPublishers(n) { setSelect(`pub${n}`, publishers().map(p=>({v:p,l:cap(p)})),'v','l'); fillPlatforms(n); }
+function fillPlatforms(n)  { const pub=document.getElementById(`pub${n}`).value; setSelect(`plat${n}`,platforms(pub).map(p=>({v:p,l:p})),'v','l'); fillDates(n); }
+function fillDates(n) {
+  const pub=document.getElementById(`pub${n}`).value, plat=document.getElementById(`plat${n}`).value;
+  const ds=dates(pub,plat), el=document.getElementById(`date${n}`);
+  el.innerHTML='<option value="">Select date…</option>';
+  ds.forEach(f => {
+    const o=document.createElement('option');
+    o.value=f.timestamp; o.dataset.publisher=f.publisher; o.dataset.platform=f.platform;
+    o.textContent=fmtDate(f.date); el.appendChild(o);
+  });
+  if (ds.length===1){el.value=ds[0].timestamp; loadPanel(n);}
+}
+function onPub1Change()  { fillPlatforms(1); }
+function onPlat1Change() { fillDates(1); }
+function onPub2Change()  { fillPlatforms(2); }
+function onPlat2Change() { fillDates(2); }
+
+/* ── Load offers ── */
+async function loadPanel(n) {
+  const panel=document.getElementById(`panel${n}`), dateEl=document.getElementById(`date${n}`);
+  const opt=dateEl.options[dateEl.selectedIndex];
+  if (!dateEl.value) { panel.innerHTML='<div class="empty"><div class="icon">📂</div><p>Select a publisher and date</p></div>'; return; }
+  panel.innerHTML='<div class="loading">⏳ Loading offers…</div>';
+  const {publisher,platform}=opt.dataset;
+  const resp=await fetch(`/api/offers?platform=${platform}&publisher=${publisher}&timestamp=${dateEl.value}`);
+  const offers=await resp.json();
+  renderPanel(panel,offers,publisher,platform);
+  updateCobHint();
+}
+
+/* ── Render panel ── */
+function renderPanel(panel,offers,publisher,platform) {
+  const pNum = panel.id==='panel1' ? 1 : 2;
+
+  // Assign offerwall rank: sort by API sortOrder, then number them 1, 2, 3...
+  const ranked = [...offers].sort((a,b)=>(a.raw?.sortOrder??999)-(b.raw?.sortOrder??999));
+  ranked.forEach((o,i) => { o._rank = i + 1; });
+
+  // Store per-panel so the search bar can show panel context in Compare Mode
+  panelOffers[pNum] = offers.map(o=>({...o, _panelNum:pNum, _panelLabel:`Panel ${pNum==='1'||pNum===1?'A':'B'} · ${cap(publisher)} · ${platform}`}));
+  offers.forEach(o => { offerMap[o.offer_id]=o; });
+  if (!offers.length) { panel.innerHTML='<div class="empty"><div class="icon">🔍</div><p>No offers found</p></div>'; return; }
+  const total=offers.reduce((s,o)=>s+(o.payout||0),0), avg=total/offers.length;
+  panel.innerHTML=`
+    <div class="stats">
+      <div class="stat"><div class="stat-lbl">Offers</div><div class="stat-val">${offers.length}</div></div>
+      <div class="stat"><div class="stat-lbl">Total Payout</div><div class="stat-val green">$${total.toFixed(2)}</div></div>
+      <div class="stat"><div class="stat-lbl">Avg Payout</div><div class="stat-val green">$${avg.toFixed(2)}</div></div>
+      <div class="stat"><div class="stat-lbl">Publisher · Platform</div><div class="stat-val" style="font-size:13px;margin-top:4px">${cap(publisher)} · ${platform}</div></div>
+    </div>
+    <div class="sort-bar">
+      <label>Sort by:</label>
+      <select onchange="sortGrid(this,'${panel.id}')">
+        <option value="rank" selected>Offerwall Rank</option>
+        <option value="payout_desc">Highest Payout</option>
+        <option value="payout_asc">Lowest Payout</option>
+        <option value="title_asc">Title A–Z</option>
+      </select>
+    </div>
+    <div class="offers-grid" id="${panel.id}-grid">${sortedCards(offers,'rank')}</div>`;
+  panel._offers=offers;
+}
+
+function sortedCards(offers,mode) {
+  let s=[...offers];
+  if      (mode==='rank')        s.sort((a,b)=>(a._rank??999)-(b._rank??999));
+  else if (mode==='payout_desc') s.sort((a,b)=>b.payout-a.payout);
+  else if (mode==='payout_asc')  s.sort((a,b)=>a.payout-b.payout);
+  else                           s.sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+  return s.map(card).join('');
+}
+function sortGrid(sel,panelId) {
+  const panel=document.getElementById(panelId);
+  document.getElementById(`${panelId}-grid`).innerHTML=sortedCards(panel._offers||[],sel.value);
+}
+function card(o) {
+  const icon=o.icon_url||'';
+  const rank=o._rank;
+  const rankBadge=rank!=null
+    ? `<div class="card-rank${rank<=3?' rank-top3':''}">#${rank}</div>`
+    : '';
+  return `
+  <div class="card" onclick="openModal('${esc(o.offer_id)}')">
+    <div class="card-img">
+      ${icon?`<img src="${icon}" onerror="this.parentElement.innerHTML='<span class=ph>🎯</span>'" alt="">`:'<span class="ph">🎯</span>'}
+      ${rankBadge}
+    </div>
+    <div class="card-body">
+      <div class="card-title">${esc(o.title||'Untitled')}</div>
+      <div class="card-payout">$${(o.payout||0).toFixed(2)}<span class="cur">${o.currency||'USD'}</span></div>
+      <div class="badges">
+        ${o.category?`<span class="badge b-cat">${esc(o.category)}</span>`:''}
+        ${o.platform?`<span class="badge b-plat">${esc(o.platform)}</span>`:''}
+        ${o.raw?.isNew?'<span class="badge b-new">New</span>':''}
+        ${o.raw?.isPremium?'<span class="badge b-prem">Premium</span>':''}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── Compare wallboards toggle ── */
+function toggleCompare() {
+  const on=document.getElementById('compareToggle').checked;
+  document.getElementById('ctrlB').style.display  =on?'flex':'none';
+  document.getElementById('div2').style.display   =on?'block':'none';
+  document.getElementById('panel2').style.display =on?'block':'none';
+  document.getElementById('panel1').classList.toggle('left-border',on);
+  if (on&&!document.getElementById('panel2')._offers)
+    document.getElementById('panel2').innerHTML='<div class="empty"><div class="icon">📂</div><p>Select a publisher and date to compare</p></div>';
+}
+
+/* ════════════════════════════════════════════════════════
+   COMPARE-OFFERS SEARCH BAR
+   ════════════════════════════════════════════════════════ */
+
+function updateCobHint() {
+  const count=Object.keys(offerMap).filter(k=>!k.startsWith('story_')).length;
+  document.getElementById('cobHint').textContent =
+    count>0 ? `${count} offers available — type to search` : 'Load offers above, then search to compare';
+}
+
+function focusSearch() { document.getElementById('offerSearch').focus(); }
+
+function getSearchableOffers() {
+  const compareOn = document.getElementById('compareToggle').checked;
+  if (compareOn && panelOffers[2].length) {
+    // Show offers from both panels with panel labels so same game can be picked from each
+    const result = [];
+    [1, 2].forEach(n => {
+      (panelOffers[n]||[])
+        .filter(o => !String(o.offer_id).startsWith('story_'))
+        .forEach(o => result.push({...o, _key:`${n}:${o.offer_id}`}));
+    });
+    return result.sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+  }
+  return Object.values(offerMap)
+    .filter(o => !String(o.offer_id).startsWith('story_'))
+    .map(o => ({...o, _key: o.offer_id}))
+    .sort((a,b)=>(a.title||'').localeCompare(b.title||''));
+}
+
+function onSearchInput() { ddFocusIdx=-1; openDropdown(); }
+
+function openDropdown() {
+  const input=document.getElementById('offerSearch');
+  const query=(input.value||'').toLowerCase().trim();
+  const all=getSearchableOffers();
+  const filtered=query
+    ? all.filter(o=>(o.title||'').toLowerCase().includes(query))
+    : all;
+
+  const dd=document.getElementById('offerDropdown');
+  if (!filtered.length) {
+    dd.innerHTML=`<div class="dd-empty">${query?'No offers match "'+esc(query)+'"':'No offers loaded yet'}</div>`;
+  } else {
+    const compareOn = document.getElementById('compareToggle').checked;
+    dd.innerHTML=filtered.map((o,i)=>{
+      const key = o._key || o.offer_id;
+      const sel = selectedForCompare.has(key);
+      const panelBadge = compareOn && o._panelLabel
+        ? `<span class="badge ${o._panelNum===1?'b-new':'b-prem'}" style="font-size:9px">${esc(o._panelLabel)}</span>`
+        : '';
+      return `
+        <div class="offer-opt${sel?' already-selected':''}" data-idx="${i}" data-id="${esc(key)}"
+             onmousedown="pickOffer('${esc(key)}')">
+          <img class="opt-icon" src="${esc(o.icon_url||'')}" onerror="this.style.display='none'" alt="">
+          <div class="opt-info">
+            <div class="opt-title">${esc(o.title||'Untitled')} ${panelBadge}</div>
+            <div class="opt-meta">$${(o.payout||0).toFixed(2)} · ${esc(o.platform||'')} · ${esc(o.category||'')}</div>
+          </div>
+          ${sel?'<span class="opt-check">✓</span>':''}
+        </div>`;
+    }).join('');
+  }
+
+  // Position dropdown below the input field
+  const rect=document.getElementById('chipsInput').getBoundingClientRect();
+  dd.style.top   =(rect.bottom+4)+'px';
+  dd.style.left  =rect.left+'px';
+  dd.style.width =Math.max(rect.width,320)+'px';
+  dd.classList.add('open');
+}
+
+function onSearchBlur() {
+  // Small delay so mousedown on an option fires first
+  setTimeout(()=>{ document.getElementById('offerDropdown').classList.remove('open'); ddFocusIdx=-1; },150);
+}
+
+function onSearchKey(e) {
+  const dd=document.getElementById('offerDropdown');
+  const opts=[...dd.querySelectorAll('.offer-opt:not(.already-selected)')];
+  if (e.key==='ArrowDown') {
+    e.preventDefault(); ddFocusIdx=Math.min(ddFocusIdx+1,opts.length-1);
+    opts.forEach((el,i)=>el.classList.toggle('focused',i===ddFocusIdx));
+  } else if (e.key==='ArrowUp') {
+    e.preventDefault(); ddFocusIdx=Math.max(ddFocusIdx-1,0);
+    opts.forEach((el,i)=>el.classList.toggle('focused',i===ddFocusIdx));
+  } else if (e.key==='Enter' && ddFocusIdx>=0 && opts[ddFocusIdx]) {
+    pickOffer(opts[ddFocusIdx].dataset.id);
+  } else if (e.key==='Escape') {
+    dd.classList.remove('open');
+  } else if (e.key==='Backspace' && !e.target.value && selectedForCompare.size>0) {
+    const lastKey=[...selectedForCompare.keys()].pop();
+    removeChip(lastKey);
+  }
+}
+
+function pickOffer(key) {
+  if (selectedForCompare.has(key)) return;
+  // key is either "offerId" or "panelN:offerId"
+  const realId = key.includes(':') ? key.split(':').slice(1).join(':') : key;
+  const panelNum = key.includes(':') ? parseInt(key.split(':')[0]) : null;
+  const o = panelNum
+    ? (panelOffers[panelNum]||[]).find(x=>x.offer_id===realId)
+    : offerMap[realId];
+  if (!o) return;
+  selectedForCompare.set(key, {...o, _key:key});
+  document.getElementById('offerSearch').value='';
+  renderChips();
+  openDropdown(); // refresh dropdown to mark as selected
+  document.getElementById('offerSearch').focus();
+}
+
+function removeChip(key) {
+  selectedForCompare.delete(key);
+  renderChips();
+  openDropdown();
+}
+
+function clearAllChips() {
+  selectedForCompare.clear();
+  renderChips();
+  document.getElementById('offerSearch').value='';
+}
+
+function renderChips() {
+  const input  = document.getElementById('chipsInput');
+  const search = document.getElementById('offerSearch');
+  const count  = selectedForCompare.size;
+
+  // Remove existing chips (keep the input element)
+  [...input.querySelectorAll('.offer-chip')].forEach(c=>c.remove());
+
+  // Insert chips before the text input
+  [...selectedForCompare.values()].forEach(o=>{
+    const chip=document.createElement('div');
+    chip.className='offer-chip';
+    const key = o._key || o.offer_id;
+    const panelTag = o._panelLabel ? ` <span style="font-size:9px;opacity:.7">${esc(o._panelLabel.split('·')[0].trim())}</span>` : '';
+    chip.innerHTML=`
+      ${o.icon_url?`<img class="chip-icon" src="${esc(o.icon_url)}" onerror="this.style.display='none'" alt="">`:''}
+      <span class="chip-title">${esc(o.title||'Untitled')}${panelTag}</span>
+      <button class="chip-remove" onmousedown="removeChip('${esc(key)}')" title="Remove">×</button>`;
+    input.insertBefore(chip,search);
+  });
+
+  // Update placeholder
+  search.placeholder = count>0 ? 'Add another…' : 'Search by game name…';
+  input.classList.toggle('has-items', count>0);
+
+  // Update hint and buttons
+  document.getElementById('cobHint').textContent =
+    count===0 ? (Object.keys(offerMap).filter(k=>!k.startsWith('story_')).length>0 ? `${Object.keys(offerMap).filter(k=>!k.startsWith('story_')).length} offers available — type to search` : 'Load offers above, then search to compare')
+              : `${count} offer${count!==1?'s':''} selected`;
+  document.getElementById('btnClearAll').style.display = count>0?'':'none';
+  document.getElementById('btnCompare').disabled = count<2;
+}
+
+/* ════════════════════════════════════════════════════════
+   COMPARISON OVERLAY
+   ════════════════════════════════════════════════════════ */
+
+async function openCompareView() {
+  if (selectedForCompare.size<2) return;
+  const offers=[...selectedForCompare.values()];
+
+  document.getElementById('cmpTitle').textContent=`Comparing ${offers.length} offer${offers.length>1?'s':''}`;
+  const titles=[...new Set(offers.map(o=>(o.title||'').toLowerCase().trim()))];
+  const sameGame=titles.length===1;
+  document.getElementById('cmpSubtitle').textContent=
+    sameGame?'Same game — events aligned for easy comparison':`${titles.length} different games`;
+  document.getElementById('cmpBadge').textContent=
+    sameGame?'🔗 Events aligned':'📋 Events per offer';
+
+  // Render loading columns
+  const colsEl=document.getElementById('cmpColumns');
+  colsEl.innerHTML=offers.map((o,i)=>`
+    <div class="cmp-col" id="cmp-col-${i}">
+      ${cmpColHead(o,i)}
+      <div class="cmp-col-body"><div class="cmp-loading">⏳ Loading events…</div></div>
+    </div>`).join('');
+
+  document.getElementById('cmpOverlay').classList.add('open');
+  document.body.style.overflow='hidden';
+
+  // Fetch all events in parallel (use real offer_id, stripping any panel prefix)
+  const eventsData=await Promise.all(offers.map(o=>{
+    const realId = o.offer_id;
+    return String(realId).startsWith('story_')
+      ? Promise.resolve({events:[]})
+      : fetch(`/api/offer-events?offer_id=${encodeURIComponent(realId)}&targeting_id=${encodeURIComponent(o.raw?.targetingId||'')}`)
+          .then(r=>r.json()).catch(()=>({events:[]}));
+  }));
+
+  // Build unified sorted event list across all offers
+  const nameToOrder=new Map();
+  eventsData.forEach(d=>(d.events||[]).forEach(e=>{
+    if (!nameToOrder.has(e.name)) nameToOrder.set(e.name,e.sortOrder);
+  }));
+  const allEventNames=[...nameToOrder.entries()].sort((a,b)=>a[1]-b[1]).map(([n])=>n);
+  const maxGlobal=Math.max(...eventsData.flatMap(d=>(d.events||[]).map(e=>e.payout||0)),0.01);
+
+  // Render each column
+  offers.forEach((o,i)=>{
+    const col=document.getElementById(`cmp-col-${i}`);
+    const body=col.querySelector('.cmp-col-body');
+    const evMap=new Map((eventsData[i].events||[]).map(e=>[e.name,e]));
+
+    if (!allEventNames.length) { body.innerHTML='<div class="cmp-empty-col">No event data available</div>'; return; }
+
+    const rows=allEventNames.map(name=>{
+      const e=evMap.get(name);
+      const pct=e?Math.round((e.payout/maxGlobal)*100):0;
+      return `<tr>
+        <td class="cmp-ev-name">${esc(name)}</td>
+        <td class="cmp-ev-bar-cell"><div class="cmp-ev-bar-wrap"><div class="cmp-ev-bar" style="width:${pct}%"></div></div></td>
+        ${e?`<td class="cmp-ev-payout">$${(e.payout||0).toFixed(2)}</td>`:`<td class="cmp-ev-missing">—</td>`}
+      </tr>`;
+    }).join('');
+
+    const total=(eventsData[i].events||[]).reduce((s,e)=>s+(e.payout||0),0);
+    body.innerHTML=`<table class="cmp-events-table"><tbody>${rows}</tbody></table>`;
+    col.querySelector('.cmp-col-footer').textContent=
+      `${(eventsData[i].events||[]).length} events · $${total.toFixed(2)} USD total`;
+  });
+}
+
+function cmpColHead(o,i) {
+  const key = o._key || o.offer_id;
+  return `
+    <div class="cmp-col-head">
+      <div class="cmp-col-top">
+        <div class="cmp-col-img">
+          ${o.icon_url?`<img src="${esc(o.icon_url)}" onerror="this.parentElement.innerHTML='🎯'" alt="">`:'🎯'}
+        </div>
+        <div class="cmp-col-title" style="flex:1">${esc(o.title||'Untitled')}</div>
+        <button class="cmp-remove" onclick="removeFromCmp('${esc(key)}')" title="Remove">×</button>
+      </div>
+      <div class="cmp-col-payout">$${(o.payout||0).toFixed(2)}</div>
+      <div class="cmp-col-meta">
+        ${o._panelLabel?`<span class="badge b-new" style="font-size:9px">${esc(o._panelLabel)}</span>`:''}
+        ${o.platform?`<span class="badge b-plat">${esc(o.platform)}</span>`:''}
+        ${o.category?`<span class="badge b-cat">${esc(o.category)}</span>`:''}
+        ${o.raw?.isPremium?'<span class="badge b-prem">Premium</span>':''}
+      </div>
+    </div>
+    <div class="cmp-col-footer">Loading…</div>`;
+}
+
+function removeFromCmp(key) {
+  selectedForCompare.delete(key);
+  renderChips();
+  if (selectedForCompare.size<2) { closeCmpOverlay(); return; }
+  openCompareView();
+}
+
+function closeCmpOverlay() {
+  document.getElementById('cmpOverlay').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+/* ════════════════════════════════════════════════════════
+   SINGLE OFFER DETAIL MODAL
+   ════════════════════════════════════════════════════════ */
+
+async function openModal(offerId) {
+  const o=offerMap[offerId]; if (!o) return;
+  document.getElementById('modal-img').innerHTML=o.icon_url
+    ?`<img src="${esc(o.icon_url)}" onerror="this.parentElement.innerHTML='🎯'" alt="">`:'🎯';
+  document.getElementById('modal-title').textContent=o.title||'Untitled';
+  document.getElementById('modal-meta').innerHTML=`
+    <span class="modal-payout">$${(o.payout||0).toFixed(2)}</span>
+    ${o.category?`<span class="badge b-cat">${esc(o.category)}</span>`:''}
+    ${o.platform?`<span class="badge b-plat">${esc(o.platform)}</span>`:''}
+    ${o.raw?.isNew?'<span class="badge b-new">New</span>':''}
+    ${o.raw?.isPremium?'<span class="badge b-prem">Premium</span>':''}`;
+  document.getElementById('modal-body').innerHTML='<div class="modal-loading">⏳ Loading event breakdown…</div>';
+  document.getElementById('modal').classList.add('open');
+  document.body.style.overflow='hidden';
+  if (String(offerId).startsWith('story_')) {
+    document.getElementById('modal-body').innerHTML='<div class="modal-empty">No event breakdown for stories.</div>'; return;
+  }
+  try {
+    const resp=await fetch(`/api/offer-events?offer_id=${encodeURIComponent(offerId)}&targeting_id=${encodeURIComponent(o.raw?.targetingId||'')}`);
+    const data=await resp.json();
+    renderEvents(data.events||[]);
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML=`<div class="modal-empty">Could not load events: ${e.message}</div>`;
+  }
+}
+
+function renderEvents(events) {
+  const body=document.getElementById('modal-body');
+  if (!events.length) { body.innerHTML='<div class="modal-empty">No event breakdown available.</div>'; return; }
+  const maxPayout=Math.max(...events.map(e=>e.payout||0),0.01);
+  const rows=events.map(e=>{
+    const pct=Math.round(((e.payout||0)/maxPayout)*100);
+    const flags=[];
+    if (e.isStartEvent)    flags.push('<span class="badge b-plat">Start</span>');
+    if (e.isInAppPurchase) flags.push('<span class="badge b-prem">IAP</span>');
+    if (e.timeLimitHours)  flags.push(`<span class="badge b-new">${e.timeLimitHours}h</span>`);
+    return `<tr>
+      <td class="event-name">${esc(e.name)}</td>
+      <td class="event-bar-cell"><div class="event-bar-wrap"><div class="event-bar" style="width:${pct}%"></div></div></td>
+      <td class="event-payout">$${(e.payout||0).toFixed(2)}</td>
+      <td><div class="event-badges">${flags.join('')}</div></td>
+    </tr>`;
+  }).join('');
+  body.innerHTML=`
+    <div class="modal-section-title">Event Breakdown (${events.length} events · $${events.reduce((s,e)=>s+(e.payout||0),0).toFixed(2)} USD total)</div>
+    <table class="events-table">
+      <thead><tr><th>Event</th><th colspan="2" style="text-align:right">Payout (USD)</th><th>Type</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function closeModal()     { document.getElementById('modal').classList.remove('open'); document.body.style.overflow=''; }
+function modalBgClick(e)  { if (e.target===document.getElementById('modal')) closeModal(); }
+
+document.addEventListener('keydown',e=>{
+  if (e.key==='Escape') {
+    if (document.getElementById('cmpOverlay').classList.contains('open')) closeCmpOverlay();
+    else closeModal();
+  }
+});
+
+init();
+</script>
+</body>
+</html>

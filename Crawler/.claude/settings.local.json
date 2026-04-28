@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m json.tool)",
+      "Bash(cp -r ~/Documents/Crawler ~/Documents/Crawler_backup_20260414)",
+      "Read(//Users/michal.lichtman/Documents/**)"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Plarium Rocks – Goals to Google Sheet",
+  "version": "2.0",
+  "description": "One-click download of subdivision goals (with KPIs & initiatives) to a new Google Sheet — no OAuth setup required.",
+
+  "permissions": ["storage", "tabs", "scripting", "clipboardWrite"],
+  "host_permissions": [
+    "https://plarium.rocks/*",
+    "https://docs.google.com/spreadsheets/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["https://plarium.rocks/cabinet/up/goals/subdivisions/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  }
+}
