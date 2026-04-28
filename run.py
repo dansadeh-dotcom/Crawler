@@ -7,7 +7,7 @@ Main entry point for the offer wall crawler.
 
 PURPOSE
     Fetches the live offer wall from all registered publishers for both
-    Android and iOS platforms, and saves results as timestamped JSONL files.
+    Android, desktop and iOS platforms, and saves results as timestamped JSONL files.
     These files are read by app.py to visualise and compare offer walls.
 
 HOW TO ADD A NEW PUBLISHER
@@ -61,6 +61,12 @@ CRAWLER_CLASSES = [
     SwagbucksCrawler,
 ]
 
+# Publisher-specific platform overrides.
+# Freecash should run on android, ios, and desktop/web snapshots.
+PLATFORM_OVERRIDES = {
+    FreecashCrawler.PUBLISHER_ID: ["android", "ios", "desktop"],
+}
+
 # Output root — Android/ and iOS/ subfolders are created here automatically
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -81,7 +87,8 @@ def run_all():
     for CrawlerClass in CRAWLER_CLASSES:
         pub = CrawlerClass.PUBLISHER_ID
 
-        for platform in CrawlerClass.PLATFORMS:
+        platforms = PLATFORM_OVERRIDES.get(pub, CrawlerClass.PLATFORMS)
+        for platform in platforms:
             key = f"{pub}/{platform}"
             logging.info("▶  Starting: %s / %s", pub, platform)
 

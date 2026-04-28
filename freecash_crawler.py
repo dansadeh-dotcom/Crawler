@@ -54,7 +54,7 @@ _CARD_RE = re.compile(
 
 class FreecashCrawler(BaseCrawler):
     PUBLISHER_ID = "freecash"
-    PLATFORMS    = ["android", "ios"]
+    PLATFORMS    = ["android", "ios", "desktop"]
 
     def __init__(self, config: dict):
         super().__init__(config)
