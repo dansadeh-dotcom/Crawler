@@ -1,3 +1,5 @@
+from typing import Optional
+from typing import Optional
 """
 testerup_crawler.py
 --------------------
@@ -12,7 +14,7 @@ This file is NOT meant to be run directly — it is imported and used by run.py.
 """
 
 import logging
-from typing import Iterator
+from collections.abc import Iterator
 from urllib.parse import urlencode
 
 import requests
@@ -57,7 +59,7 @@ class TesterUpCrawler(BaseCrawler):
         email    = os.getenv("TESTERUP_EMAIL")
         password = os.getenv("TESTERUP_PASSWORD")
         if not email or not password:
-            raise EnvironmentError(
+            raise OSError(
                 "TESTERUP_EMAIL and TESTERUP_PASSWORD must be set in .env"
             )
         return cls({

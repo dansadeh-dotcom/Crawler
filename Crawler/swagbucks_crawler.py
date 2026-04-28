@@ -1,3 +1,5 @@
+from typing import Optional
+from typing import Optional
 """
 swagbucks_crawler.py
 ---------------------
@@ -39,7 +41,7 @@ CREDENTIALS NEEDED (.env):
 """
 
 import os
-from typing import Iterator
+from collections.abc import Iterator
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -80,7 +82,7 @@ class SwagbucksCrawler(BaseCrawler):
         password       = os.getenv("SWAGBUCKS_PASSWORD", "")
 
         if not session_cookie and not (email and password):
-            raise EnvironmentError(
+            raise OSError(
                 "Swagbucks requires either SWAGBUCKS_SESSION_COOKIE or "
                 "SWAGBUCKS_EMAIL + SWAGBUCKS_PASSWORD in .env. "
                 "See swagbucks_crawler.py for setup instructions."
@@ -167,7 +169,7 @@ class SwagbucksCrawler(BaseCrawler):
 
         self.logger.info("Swagbucks: %d offers fetched (platform=%s)", count, platform)
 
-    def _norm(self, raw: dict, platform: str) -> Offer | None:
+    def _norm(self, raw: dict, platform: str) -> Optional[Offer]:
         """Converts a raw Swagbucks API item into a normalised Offer."""
         try:
             raw_platform = (

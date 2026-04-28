@@ -1,3 +1,6 @@
+from typing import Optional
+from typing import Optional
+from typing import Optional
 """
 kashkick_crawler.py
 --------------------
@@ -14,7 +17,7 @@ NO CREDENTIALS NEEDED — this crawler works out of the box.
 """
 
 import re
-from typing import Iterator
+from collections.abc import Iterator
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -96,7 +99,7 @@ class KashkickCrawler(BaseCrawler):
 
         self.logger.info("Kashkick: %d offers fetched", count)
 
-    def _norm(self, raw: dict) -> Offer | None:
+    def _norm(self, raw: dict) -> Optional[Offer]:
         """Converts a raw Kashkick API item into a normalised Offer."""
         try:
             # Platform: integer code → string name

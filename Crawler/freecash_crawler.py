@@ -1,3 +1,5 @@
+from typing import Optional
+from typing import Optional
 """
 freecash_crawler.py
 --------------------
@@ -12,7 +14,8 @@ real, non-empty snapshots.
 import html
 import os
 import re
-from typing import Iterator, Optional
+from typing import Optional
+from collections.abc import Iterator
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import requests

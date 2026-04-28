@@ -1,3 +1,5 @@
+from typing import Optional
+from typing import Optional
 """
 run.py
 -------
@@ -86,7 +88,7 @@ def run_all():
             # Build the crawler from env vars; skip cleanly if credentials are missing
             try:
                 crawler = CrawlerClass.from_env(platform=platform)
-            except (EnvironmentError, NotImplementedError) as exc:
+            except (OSError, NotImplementedError) as exc:
                 logging.warning("⚠️  Skipping %s — %s", key, exc)
                 results[key] = {"status": "skipped", "reason": str(exc)}
                 continue

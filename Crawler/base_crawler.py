@@ -1,3 +1,5 @@
+from typing import Optional
+from typing import Optional
 """
 base_crawler.py
 ----------------
@@ -25,7 +27,8 @@ EXTENDING
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
-from typing import Iterator, Optional
+from typing import Optional
+from collections.abc import Iterator
 import logging
 
 logger = logging.getLogger(__name__)
