@@ -1,5 +1,3 @@
-from typing import Optional
-from typing import Optional
 """
 base_crawler.py
 ----------------
@@ -30,8 +28,38 @@ from datetime import datetime
 from typing import Optional
 from collections.abc import Iterator
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_proxy_url(publisher_id: Optional[str] = None) -> Optional[str]:
+    """
+    Resolves proxy URL from environment.
+
+    Resolution order:
+      1) {PUBLISHER}_PROXY_URL (e.g. TESTERUP_PROXY_URL)
+      2) CRAWLER_PROXY_URL (global fallback)
+    """
+    publisher_proxy = ""
+    if publisher_id:
+        publisher_proxy = os.getenv(f"{publisher_id.upper()}_PROXY_URL", "")
+
+    global_proxy = os.getenv("CRAWLER_PROXY_URL", "")
+    proxy = (publisher_proxy or global_proxy).strip()
+    return proxy or None
+
+
+def configure_session_proxy(session, publisher_id: Optional[str] = None) -> Optional[str]:
+    """
+    Applies explicit proxy routing to a requests Session if configured.
+    """
+    proxy = resolve_proxy_url(publisher_id)
+    # Avoid accidental proxying from parent shell env; use only explicit crawler vars.
+    session.trust_env = False
+    if proxy:
+        session.proxies.update({"http": proxy, "https": proxy})
+    return proxy
 
 
 @dataclass

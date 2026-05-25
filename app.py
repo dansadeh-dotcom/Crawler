@@ -36,21 +36,25 @@ HOW TO RUN
 
 import json
 import os
+import time
 import requests
-from urllib.parse import urlencode
+from urllib.parse import urlencode, unquote
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+
+try:
+    from blob_utils import list_blob_files, download_blob_file
+    BLOB_AVAILABLE = True
+except Exception as e:
+    print(f"Warning: Blob utils not available: {e}")
+    BLOB_AVAILABLE = False
 
 # ─── Load credentials from .env ───────────────────────────────────────────────
 # .env must exist in the same folder as this script (copy from .env.example).
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 app = Flask(__name__)
-
-# Absolute path to this script's folder — used to locate the Android/ and iOS/
-# data directories regardless of where the server is started from.
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ── TesterUP API credentials & endpoints ──────────────────────────────────────
 # Loaded from .env — see .env.example for the required keys.
@@ -59,9 +63,22 @@ GRAPHQL_URL       = "https://api.v2.testerup.com/graphql/"
 TESTERUP_EMAIL    = os.getenv("TESTERUP_EMAIL")
 TESTERUP_PASSWORD = os.getenv("TESTERUP_PASSWORD")
 
-# Cached authenticated session — created once on first /api/offer-events call
-# and reused for all subsequent requests to avoid re-authenticating every time.
+# Folder name → display name mapping used in both /api/files and /api/offers
+_PLATFORM_FOLDER_MAP = {
+    "Android": "Android",
+    "iOS": "iOS",
+    "Desktop": "Desktop",
+    "Freecash mobile": "Freecash mobile",
+    "freecash desktop": "freecash desktop",
+    "Kashkick": "Kashkick",
+    "swagbucks": "swagbucks",
+    "testerup": "testerup",
+}
+
+# Cached authenticated session — re-created when token is older than _SESSION_TTL
 _api_session = None
+_session_created_at: float = 0.0
+_SESSION_TTL = 50 * 60  # 50 minutes — TesterUP tokens expire after ~1 hour
 
 
 # ── GraphQL query for per-event offer breakdown ────────────────────────────────
@@ -99,28 +116,34 @@ def _get_session() -> requests.Session:
     """
     Returns an authenticated HTTP session for TesterUP's private API.
 
-    Authentication uses TesterUP's web login flow (same as logging in via the browser):
-      Step 1 — Fetch a CSRF token to prevent request forgery attacks
+    Re-authenticates if the cached session is older than _SESSION_TTL (50 min).
+
+    Auth flow (3 steps — /api/auth/csrf returns 403, so we load the homepage instead):
+      Step 1 — GET homepage to receive the __Host-next-auth.csrf-token cookie
       Step 2 — POST email + password + CSRF token to the credentials endpoint
-      Step 3 — Fetch the session object, which contains the Bearer access token
-
-    The session is cached in the module-level _api_session variable so we only
-    authenticate once per server lifetime (not on every dashboard click).
-
-    Returns:
-        An authenticated requests.Session with the Authorization header set.
+      Step 3 — GET session to extract the Bearer access token
 
     Raises:
-        Exception if authentication fails (e.g. wrong credentials or API down).
+        RuntimeError if authentication fails.
     """
-    global _api_session
-    if _api_session:
+    global _api_session, _session_created_at
+    if _api_session and (time.time() - _session_created_at) < _SESSION_TTL:
         return _api_session
 
     s = requests.Session()
+    s.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+    })
 
-    # Step 1: get CSRF security token
-    csrf = s.get(f"{BASE_WEB_URL}/api/auth/csrf", timeout=15).json()["csrfToken"]
+    # Step 1: load homepage to receive CSRF cookie
+    s.get(f"{BASE_WEB_URL}/", timeout=15)
+    raw_cookie = s.cookies.get("__Host-next-auth.csrf-token", "")
+    if not raw_cookie:
+        raise RuntimeError("CSRF cookie not set after loading TesterUP homepage")
+    csrf = unquote(raw_cookie).split("|")[0]
 
     # Step 2: submit credentials
     s.post(
@@ -138,16 +161,20 @@ def _get_session() -> requests.Session:
         timeout=15,
     )
 
-    # Step 3: extract the Bearer token and attach it to all future requests
+    # Step 3: extract Bearer token
     data  = s.get(f"{BASE_WEB_URL}/api/auth/session", timeout=15).json()
     token = data.get("user", {}).get("accessToken") or data.get("accessToken")
+    if not token:
+        raise RuntimeError(f"Failed to obtain TesterUP access token: {data}")
     s.headers["Authorization"] = f"Bearer {token}"
 
     _api_session = s
+    _session_created_at = time.time()
     return s
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
+
 
 @app.route("/")
 def index():
@@ -161,57 +188,71 @@ def index():
 @app.route("/api/files")
 def list_files():
     """
-    Scans the Android/ and iOS/ subdirectories and returns metadata for every
-    valid crawl result file found.
+    Lists crawl result files from Vercel Blob storage.
 
     The dashboard uses this response to populate its Publisher, Platform, and
     Date dropdown menus on load.
 
     Skips:
-      - Files that are 0 bytes (produced by failed/aborted crawl runs)
       - Files that don't follow the {publisher}_offers_{timestamp}.jsonl naming convention
 
     Returns JSON array of objects, each with:
       publisher   — e.g. "testerup"
-      platform    — "Android" or "iOS"
+      platform    — "Android", "iOS", "freecash desktop", or "Freecash mobile"
       date        — "YYYYMMDD" (used to group files by day in the dropdown)
       timestamp   — "YYYYMMDD_HHMMSS" (used to load the exact file)
     """
     files = []
-    for platform in ["Android", "iOS", "Desktop"]:
-        platform_dir = os.path.join(BASE_DIR, platform)
-        if not os.path.exists(platform_dir):
-            continue
-
-        for fname in sorted(os.listdir(platform_dir), reverse=True):
-            if not fname.endswith(".jsonl"):
+    try:
+        if not BLOB_AVAILABLE:
+            return jsonify({"error": "Blob storage not configured"}), 503
+        
+        # List all files in Blob storage
+        blob_files = list_blob_files()
+        
+        # Group by platform folder
+        for blob_file in blob_files:
+            pathname = blob_file.get("pathname", "")
+            if not pathname.endswith(".jsonl"):
                 continue
-            stem = fname[:-6]   # strip ".jsonl"
+            
+            # Extract folder and filename
+            if "/" not in pathname:
+                continue
+            
+            platform_folder, fname = pathname.rsplit("/", 1)
+            stem = fname[:-6]  # strip ".jsonl"
+            
             if "_offers_" not in stem:
                 continue
-
-            # Skip empty files — these come from crawl runs that failed after
-            # creating the output file but before writing any data
-            fpath = os.path.join(platform_dir, fname)
-            if os.path.getsize(fpath) == 0:
-                continue
-
+            
             publisher, ts = stem.split("_offers_", 1)
+            
+            platform_name = _PLATFORM_FOLDER_MAP.get(platform_folder, platform_folder)
+            
             files.append({
                 "publisher": publisher,
-                "platform":  platform,
-                "date":      ts[:8],    # "YYYYMMDD" — shown in the date dropdown
-                "timestamp": ts,        # full "YYYYMMDD_HHMMSS" — used to load the file
+                "platform": platform_name,
+                "date": ts[:8],  # "YYYYMMDD"
+                "timestamp": ts,  # full "YYYYMMDD_HHMMSS"
+                "blob_pathname": pathname,  # for later use in get_offers
             })
-
+        
+        # Sort by timestamp descending
+        files.sort(key=lambda x: x["timestamp"], reverse=True)
+        
+    except Exception as e:
+        print(f"Error listing Blob files: {e}")
+        return jsonify({"error": str(e)}), 500
+    
     return jsonify(files)
 
 
 @app.route("/api/offers")
 def get_offers():
     """
-    Reads offers from a specific JSONL result file and returns only those that
-    match the selected platform.
+    Reads offers from a specific JSONL result file in Vercel Blob and returns 
+    only those that match the selected platform.
 
     Background: The TesterUP API returns both Android and iOS offers in a single
     response, so both are saved to each platform folder. This endpoint filters
@@ -236,20 +277,30 @@ def get_offers():
     if not all([platform, publisher, timestamp]):
         return jsonify({"error": "Missing required parameters: platform, publisher, timestamp"}), 400
 
-    filepath = os.path.join(BASE_DIR, platform, f"{publisher}_offers_{timestamp}.jsonl")
-    if not os.path.exists(filepath):
-        return jsonify({"error": f"File not found: {filepath}"}), 404
+    platform_folder = _PLATFORM_FOLDER_MAP.get(platform, platform)
+    blob_pathname = f"{platform_folder}/{publisher}_offers_{timestamp}.jsonl"
+    
+    # Download file from Blob
+    if not BLOB_AVAILABLE:
+        return jsonify({"error": "Blob storage not configured"}), 503
+    
+    file_content = download_blob_file(blob_pathname)
+    if file_content is None:
+        return jsonify({"error": f"File not found in Blob: {blob_pathname}"}), 404
 
-    # Parse every line in the JSONL file, skipping blank lines and malformed JSON
+    # Parse every line in the JSONL content
     raw_offers = []
-    with open(filepath) as f:
-        for line in f:
+    try:
+        for line in file_content.decode("utf-8").split("\n"):
             line = line.strip()
             if line:
                 try:
                     raw_offers.append(json.loads(line))
                 except json.JSONDecodeError:
                     pass  # skip corrupted lines silently
+    except Exception as e:
+        print(f"Error parsing JSONL: {e}")
+        return jsonify({"error": f"Error parsing JSONL: {str(e)}"}), 500
 
     # Filter: keep only offers matching the requested platform.
     # Checks (in order): raw.targetDeviceType (TesterUP), normalised platform field,

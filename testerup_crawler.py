@@ -1,5 +1,3 @@
-from typing import Optional
-from typing import Optional
 """
 testerup_crawler.py
 --------------------
@@ -21,7 +19,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from base_crawler import BaseCrawler, Offer
+from base_crawler import BaseCrawler, Offer, configure_session_proxy
 
 # ── API endpoints ──────────────────────────────────────────────────────────────
 BASE_WEB_URL = "https://www.testerup.com"
@@ -65,7 +63,7 @@ class TesterUpCrawler(BaseCrawler):
         return cls({
             "email":      email,
             "password":   password,
-            "country":    os.getenv("TESTERUP_COUNTRY", "US"),
+            "country":    os.getenv("TESTERUP_COUNTRY") or os.getenv("TESTERAPP_COUNTRY", "US"),
             "platform":   platform,
             "page_size":  50,
             "rate_limit": 1.0,
@@ -91,6 +89,7 @@ class TesterUpCrawler(BaseCrawler):
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         })
         session.mount("https://", HTTPAdapter(max_retries=Retry(total=3, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504])))
+        configure_session_proxy(session, self.PUBLISHER_ID)
         return session
 
     def authenticate(self):

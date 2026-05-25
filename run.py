@@ -1,5 +1,3 @@
-from typing import Optional
-from typing import Optional
 """
 run.py
 -------
@@ -23,6 +21,7 @@ HOW TO RUN
 OUTPUT FILES
     Android/{publisher}_offers_YYYYMMDD_HHMMSS.jsonl
     iOS/{publisher}_offers_YYYYMMDD_HHMMSS.jsonl
+    Desktop/{publisher}_offers_YYYYMMDD_HHMMSS.jsonl
 
 SCHEDULING
     This script runs automatically every day at 7:00 AM via Claude's scheduled
@@ -34,13 +33,14 @@ import logging
 import os
 from datetime import datetime
 
+import requests
 from dotenv import load_dotenv
 
 # ── Import all crawler classes ─────────────────────────────────────────────────
 from testerup_crawler  import TesterUpCrawler
 from kashkick_crawler  import KashkickCrawler
 from freecash_crawler  import FreecashCrawler
-from swagbucks_crawler import SwagbucksCrawler
+from base_crawler import resolve_proxy_url
 
 # ── Load credentials ───────────────────────────────────────────────────────────
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
@@ -58,7 +58,7 @@ CRAWLER_CLASSES = [
     TesterUpCrawler,
     KashkickCrawler,
     FreecashCrawler,
-    SwagbucksCrawler,
+    # SwagbucksCrawler disabled — OFFERS_URL is a placeholder; re-enable once endpoint is known
 ]
 
 # Publisher-specific platform overrides.
@@ -69,6 +69,69 @@ PLATFORM_OVERRIDES = {
 
 # Output root — Android/ and iOS/ subfolders are created here automatically
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def preflight_ip_check() -> bool:
+    """
+    Logs public IP/country before crawling and optionally enforces US egress.
+
+    Env:
+      - REQUIRE_US_IP=true|false
+      - EXPECTED_COUNTRY_CODE=US
+      - CRAWLER_PROXY_URL / {PUBLISHER}_PROXY_URL
+    """
+    expected_country = os.getenv("EXPECTED_COUNTRY_CODE", "US").strip().upper() or "US"
+    require_country = _env_flag("REQUIRE_US_IP", default=False)
+
+    session = requests.Session()
+    session.trust_env = False
+    proxy = resolve_proxy_url()
+    if proxy:
+        session.proxies.update({"http": proxy, "https": proxy})
+
+    ip = "unknown"
+    country = "unknown"
+    try:
+        response = session.get("https://api.country.is/", timeout=15)
+        response.raise_for_status()
+        payload = response.json()
+        ip = str(payload.get("ip") or ip)
+        country = str(payload.get("country") or country).upper()
+    except Exception as exc:
+        logging.warning("IP preflight via api.country.is failed: %s", exc)
+        try:
+            response = session.get("https://ipinfo.io/json", timeout=15)
+            response.raise_for_status()
+            payload = response.json()
+            ip = str(payload.get("ip") or ip)
+            country = str(payload.get("country") or country).upper()
+        except Exception as ipify_exc:
+            logging.warning("IP preflight via ipinfo.io failed: %s", ipify_exc)
+
+    logging.info(
+        "Network preflight: ip=%s country=%s expected_country=%s proxy_configured=%s require_country=%s",
+        ip,
+        country,
+        expected_country,
+        bool(proxy),
+        require_country,
+    )
+
+    if require_country and country != expected_country:
+        logging.error(
+            "Stopping crawl because egress country is '%s' (expected '%s').",
+            country,
+            expected_country,
+        )
+        return False
+    return True
 
 
 def run_all():
@@ -82,6 +145,12 @@ def run_all():
 
     Prints a human-readable summary when all crawls finish.
     """
+    if not preflight_ip_check():
+        print("\n── Crawl summary ───────────────────────────────────────────────")
+        print("  ❌  preflight                      blocked by country check")
+        print("────────────────────────────────────────────────────────────────\n")
+        return
+
     results = {}
 
     for CrawlerClass in CRAWLER_CLASSES:
@@ -101,7 +170,9 @@ def run_all():
                 continue
 
             # Prepare output file
-            platform_folder = {"ios": "iOS", "desktop": "Desktop"}.get(platform, "Android")
+            # All publishers share Android / iOS / Desktop folders.
+            # Publisher is identified by the filename prefix (e.g. freecash_offers_...).
+            platform_folder = {"android": "Android", "ios": "iOS", "desktop": "Desktop"}.get(platform, platform)
             output_dir = os.path.join(SCRIPT_DIR, platform_folder)
             os.makedirs(output_dir, exist_ok=True)
 
@@ -117,13 +188,18 @@ def run_all():
                         if count % 100 == 0:
                             logging.info("  %d offers saved…", count)
 
-                logging.info("✅ %s: %d offers → %s", key, count, fname)
-                results[key] = {"status": "ok", "count": count, "file": fname}
+                # Remove empty output files so the dashboard doesn't show phantom entries
+                if os.path.exists(fname) and os.path.getsize(fname) == 0:
+                    os.remove(fname)
+                    logging.info("⏭️  %s: 0 offers, file removed", key)
+                    results[key] = {"status": "skipped", "reason": "0 offers returned"}
+                else:
+                    logging.info("✅ %s: %d offers → %s", key, count, fname)
+                    results[key] = {"status": "ok", "count": count, "file": fname}
 
             except Exception as exc:
                 logging.exception("Crawl failed: %s", key)
                 results[key] = {"status": "error", "error": str(exc)}
-                # Remove empty output files so the dashboard doesn't show phantom entries
                 if os.path.exists(fname) and os.path.getsize(fname) == 0:
                     os.remove(fname)
 
@@ -137,6 +213,26 @@ def run_all():
         else:
             print(f"  ❌  {key:30s}  ERROR: {r['error']}")
     print("────────────────────────────────────────────────────────────────\n")
+
+    # ── Auto-upload to Vercel Blob ────────────────────────────────────────────
+    # After crawling, upload files to Blob so the dashboard can see them
+    if os.getenv("BLOB_READ_WRITE_TOKEN"):
+        logging.info("Uploading to Vercel Blob...")
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["node", "blob-upload.js"],
+                cwd=SCRIPT_DIR,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.stdout:
+                logging.info("Blob upload output:\n%s", result.stdout.strip())
+            if result.returncode != 0:
+                logging.warning("Blob upload failed (exit %d):\n%s", result.returncode, result.stderr.strip())
+        except Exception as e:
+            logging.warning("Failed to upload to Blob: %s", e)
 
 
 if __name__ == "__main__":

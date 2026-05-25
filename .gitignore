@@ -22,5 +22,7 @@ __pycache__/
 # ── Crawl result data (large, stored in Google Drive, not in git) ─────────────
 Android/
 iOS/
+Desktop/
+logs/
 .vercel
 .env*.local

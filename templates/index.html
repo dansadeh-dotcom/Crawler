@@ -261,7 +261,7 @@ select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(
 
   <span class="cob-hint" id="cobHint">Load offers above, then search to compare</span>
   <button class="btn-clear-all" id="btnClearAll" onclick="clearAllChips()" style="display:none">Clear all</button>
-  <button class="btn-compare-now" id="btnCompare" onclick="openCompareView()" disabled>Compare</button>
+  <button class="btn-compare-now" id="btnCompare" onclick="openCompareView()" disabled title="Select 2 or more offers to compare">Compare</button>
 </div>
 
 <!-- ── Comparison full-screen overlay ── -->
@@ -318,7 +318,7 @@ async function init() {
   const resp = await fetch('/api/files');
   allFiles = await resp.json();
 
-  // ── Panel 1 defaults: Freecash first if present, otherwise TesterUP, otherwise first available ──
+  // Panel 1: prefer freecash then testerup, Android platform, most recent date (auto-loaded by fillDates)
   fillPublishers(1);
   const pub1 = document.getElementById('pub1');
   const preferredPublisher = getPreferredPublisher(pub1);
@@ -331,13 +331,7 @@ async function init() {
     : ([...plat1.options].find(o => o.value) || {}).value;
   if (preferredPlatform) plat1.value = preferredPlatform;
 
-  fillDates(1);
-  const date1 = document.getElementById('date1');
-  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
-  const ys = yesterday.toISOString().slice(0,10).replace(/-/g,''); // YYYYMMDD
-  const yOpt = [...date1.options].find(o => o.value.startsWith(ys));
-  if (yOpt) { date1.value = yOpt.value; loadPanel(1); }
-  else if (date1.options.length > 1) { date1.selectedIndex = 1; loadPanel(1); } // fallback: most recent
+  fillDates(1); // auto-selects most recent date and loads panel
 
   fillPublishers(2);
 }
@@ -346,17 +340,20 @@ async function init() {
 function unique(arr) { return [...new Set(arr)].sort(); }
 function cap(s)      { return s.charAt(0).toUpperCase() + s.slice(1); }
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function getPreferredPublisher(selectEl) {
-  const preferred = ['freecash', 'testerup'];
+  const preferred = ['testerup', 'freecash'];
   for (const publisher of preferred) {
     if ([...selectEl.options].some(o => o.value === publisher)) return publisher;
   }
   return ([...selectEl.options].find(o => o.value) || {}).value || '';
 }
 function supportsEventBreakdown(offer) {
-  return (offer?.publisher || '').toLowerCase() === 'testerup';
+  const pub = (offer?.publisher || '').toLowerCase();
+  if (pub === 'testerup') return true;
+  if (pub === 'freecash') return Array.isArray(offer?.raw?.tasks) && offer.raw.tasks.length > 0;
+  return false;
 }
 function offerDescription(offer) {
   return offer.description || offer.requirements || offer.raw?.description || offer.raw?.details || '';
@@ -420,7 +417,7 @@ function fillDates(n) {
     o.value=f.timestamp; o.dataset.publisher=f.publisher; o.dataset.platform=f.platform;
     o.textContent=fmtDate(f.date); el.appendChild(o);
   });
-  if (ds.length===1){el.value=ds[0].timestamp; loadPanel(n);}
+  if (ds.length > 0) { el.value=ds[0].timestamp; loadPanel(n); }
 }
 function onPub1Change()  { fillPlatforms(1); }
 function onPlat1Change() { fillDates(1); }
@@ -717,10 +714,11 @@ async function openCompareView() {
   // Fetch all events in parallel (use real offer_id, stripping any panel prefix)
   const eventsData=await Promise.all(offers.map(o=>{
     const realId = o.offer_id;
-    return String(realId).startsWith('story_') || !supportsEventBreakdown(o)
-      ? Promise.resolve({events:[]})
-      : fetch(`/api/offer-events?offer_id=${encodeURIComponent(realId)}&targeting_id=${encodeURIComponent(o.raw?.targetingId||'')}`)
-          .then(r=>r.json()).catch(()=>({events:[]}));
+    const pub = (o?.publisher || '').toLowerCase();
+    if (String(realId).startsWith('story_') || !supportsEventBreakdown(o)) return Promise.resolve({events:[]});
+    if (pub === 'freecash') return Promise.resolve({events: freecashTasksToEvents(o.raw?.tasks || [])});
+    return fetch(`/api/offer-events?offer_id=${encodeURIComponent(realId)}&targeting_id=${encodeURIComponent(o.raw?.targetingId||'')}`)
+        .then(r=>r.json()).catch(()=>({events:[]}));
   }));
 
   // Build unified sorted event list across all offers
@@ -802,6 +800,21 @@ function closeCmpOverlay() {
    SINGLE OFFER DETAIL MODAL
    ════════════════════════════════════════════════════════ */
 
+function freecashTasksToEvents(tasks) {
+  return tasks
+    .filter(t => t.title)
+    .map((t, i) => ({
+      id:              t.id,
+      name:            t.title,
+      payout:          (t.coins || 0) / 1000,
+      currency:        'USD',
+      sortOrder:       i,
+      isStartEvent:    false,
+      isInAppPurchase: t.type === 'PURCHASE_BONUS_REWARD',
+      timeLimitHours:  t.type === 'TIME_LIMIT' ? true : null,
+    }));
+}
+
 async function openModal(offerId) {
   const o=offerMap[offerId]; if (!o) return;
   document.getElementById('modal-img').innerHTML=o.icon_url
@@ -820,7 +833,11 @@ async function openModal(offerId) {
     document.getElementById('modal-body').innerHTML = renderSnapshotDetails(o, 'No event breakdown is available for stories.'); return;
   }
   if (!supportsEventBreakdown(o)) {
-    document.getElementById('modal-body').innerHTML = renderSnapshotDetails(o, 'Live event breakdown is only available for TesterUP offers.'); return;
+    document.getElementById('modal-body').innerHTML = renderSnapshotDetails(o, 'No event breakdown available for this publisher.'); return;
+  }
+  const pub = (o?.publisher || '').toLowerCase();
+  if (pub === 'freecash') {
+    renderEvents(freecashTasksToEvents(o.raw?.tasks || [])); return;
   }
   try {
     const resp=await fetch(`/api/offer-events?offer_id=${encodeURIComponent(offerId)}&targeting_id=${encodeURIComponent(o.raw?.targetingId||'')}`);
@@ -840,7 +857,7 @@ function renderEvents(events) {
     const flags=[];
     if (e.isStartEvent)    flags.push('<span class="badge b-plat">Start</span>');
     if (e.isInAppPurchase) flags.push('<span class="badge b-prem">IAP</span>');
-    if (e.timeLimitHours)  flags.push(`<span class="badge b-new">${e.timeLimitHours}h</span>`);
+    if (e.timeLimitHours)  flags.push(typeof e.timeLimitHours === 'number' ? `<span class="badge b-new">${e.timeLimitHours}h</span>` : `<span class="badge b-new">Timed</span>`);
     return `<tr>
       <td class="event-name">${esc(e.name)}</td>
       <td class="event-bar-cell"><div class="event-bar-wrap"><div class="event-bar" style="width:${pct}%"></div></div></td>

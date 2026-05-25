@@ -1,5 +1,3 @@
-from typing import Optional
-from typing import Optional
 """
 swagbucks_crawler.py
 ---------------------
@@ -42,12 +40,13 @@ CREDENTIALS NEEDED (.env):
 
 import os
 from collections.abc import Iterator
+from typing import Optional
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from base_crawler import BaseCrawler, Offer
+from base_crawler import BaseCrawler, Offer, configure_session_proxy
 
 BASE_URL = "https://www.swagbucks.com"
 
@@ -104,6 +103,7 @@ class SwagbucksCrawler(BaseCrawler):
                 status_forcelist=[429, 500, 502, 503, 504],
             )),
         )
+        configure_session_proxy(s, self.PUBLISHER_ID)
         return s
 
     def authenticate(self) -> bool:
